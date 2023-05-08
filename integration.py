@@ -1,5 +1,5 @@
 register_module_line('Claroty_XDome', 'start', __line__())
-#Author: Harrison Koll April 2023
+#Author: Harrison Koll April 2023, https://github.com/SnipSnapp/Claroty_xDOME-XSOAR_Integration/edit/main/integration.py
 '''IMPORTS'''
 import requests
 import urllib3
@@ -8,7 +8,6 @@ from datetime import datetime,timezone,timedelta
 #suppress SSL warning, this is so we don't get a red text output
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 INTEGRATION_NAME='Claroty xDome'
-#This is our actual API key below.
 #Get the API token
 SECRET = demisto.params().get('credentials', {}).get('password') or demisto.params().get('secret')
 ALERT_URL = demisto.params().get('tenant_url')
@@ -60,6 +59,16 @@ DETECTIONS_ALERT_DEVICE_KEY_MAP = {
             "value":["False"]
         },
         "fields":[
+            "endpoint_security_names",
+            "dhcp_hostnames",
+            "http_hostnames",
+            "snmp_hostnames",
+            "windows_hostnames",
+            "other_hostnames",
+            "os_name",
+            "os_version",
+            "os_revision",
+            "combined_os",
             "device_category",
             "device_type",
             "ip_list",
@@ -71,6 +80,8 @@ DETECTIONS_ALERT_DEVICE_KEY_MAP = {
             "authentication_user_list",
             "is_resolved",
             "last_domain_user",
+            "edr_is_up_to_date_text",
+            "endpoint_security_names",
             "labels"
 
         ]
@@ -80,12 +91,12 @@ DETECTIONS_ALERT_DEVICE_KEY_MAP = {
 #Pull any alerts that have occurred in the past minute.
 def get_alerts():
     """
-    :return: an array of JSON elements, for the alerts that have been pulled in the past minute.
+    :return: an array of JSON elements, for the alerts that have been pulled in the last update interval minute.
     """
     alert_return = []
     alerts_json = requests.post(url=API_ALERTS_URL, json=DETECTIONS_ALERTS_KEY_MAP, headers=TOKEN_HEADER,
     verify=False).json()['alerts']
-    if len(alerts_json) ==0:
+    if alerts_json is None or len(alerts_json) ==0:
         return alert_return
     for alert in alerts_json:
         if alert['status'] == 'Unresolved':
@@ -93,6 +104,7 @@ def get_alerts():
                 alert.update({y:str(alert[y])})
             alert.update({'device_details':fetch_affected_devices({'alert_id': alert['id']})})
             alert.update({'alert_link':f'{ALERT_URL}/alerts-and-threats/alerts/{alert["id"]}#details'})
+            alert.update({'inc_class':'xDome'})
             the_data=json.dumps(alert,indent=4)
             alert_return.append({
                 'name':alert['alert_name'],
@@ -114,8 +126,10 @@ def fetch_affected_devices(args : dict):
         raise DemistoException('Please add a filter argument "alert_id".')
 
     fetch_url = f"{API_ALERTS_URL}{args.get('alert_id')}/devices"
-    return requests.post(url=fetch_url, json=DETECTIONS_ALERT_DEVICE_KEY_MAP, headers=TOKEN_HEADER,
-    verify=False).json()
+    for alert in requests.post(url=fetch_url, json=DETECTIONS_ALERT_DEVICE_KEY_MAP, headers=TOKEN_HEADER,
+    verify=False).json()["devices"]:
+        alert_return.append(alert)
+    return alert_return
 
 def test_module():
     try:
