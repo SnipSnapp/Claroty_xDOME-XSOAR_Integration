@@ -1,5 +1,5 @@
 register_module_line('Claroty_XDome', 'start', __line__())
-#Author: Harrison Koll April 2023, https://github.com/SnipSnapp/Claroty_xDOME-XSOAR_Integration/edit/main/integration.py
+#Author: Harrison Koll April 2023, https://github.com/SnipSnapp
 '''IMPORTS'''
 import requests
 import urllib3
@@ -18,6 +18,12 @@ TOKEN_HEADER = {"Authorization": f"Bearer {SECRET}"}
 #Fetch alerts at a designated interval of 1 minute
 FETCH_INTERVAL = datetime.now(tz=timezone(timedelta(hours=-5), name="CDT")) - timedelta(minutes=
 int(demisto.params().get('incidentFetchInterval')))
+#CSV of prefixes to strip from hostnames
+STRIP_PREFIXES = demisto.params().get('strip_prefixes')
+#CSV of suffixes to strip from hostnames
+STRIP_SUFFIXES = demisto.params().get('strip_suffixes')
+#Items that give hostnames
+NAMES = ['other_hostnames','snmp_hostnames','windows_hostnames','http_hostnames','dhcp_hostnames']
 '''KEY DICTIONARY'''
 #Used for fetching detections. This is the JSON needed
 DETECTIONS_ALERTS_KEY_MAP = {
@@ -68,7 +74,6 @@ DETECTIONS_ALERT_DEVICE_KEY_MAP = {
             "os_name",
             "os_version",
             "os_revision",
-            "combined_os",
             "device_category",
             "device_type",
             "ip_list",
@@ -80,8 +85,6 @@ DETECTIONS_ALERT_DEVICE_KEY_MAP = {
             "authentication_user_list",
             "is_resolved",
             "last_domain_user",
-            "edr_is_up_to_date_text",
-            "endpoint_security_names",
             "labels"
 
         ]
@@ -96,7 +99,7 @@ def get_alerts():
     alert_return = []
     alerts_json = requests.post(url=API_ALERTS_URL, json=DETECTIONS_ALERTS_KEY_MAP, headers=TOKEN_HEADER,
     verify=False).json()['alerts']
-    if alerts_json is None or len(alerts_json) ==0:
+    if len(alerts_json) ==0:
         return alert_return
     for alert in alerts_json:
         if alert['status'] == 'Unresolved':
@@ -126,10 +129,23 @@ def fetch_affected_devices(args : dict):
         raise DemistoException('Please add a filter argument "alert_id".')
 
     fetch_url = f"{API_ALERTS_URL}{args.get('alert_id')}/devices"
-    for alert in requests.post(url=fetch_url, json=DETECTIONS_ALERT_DEVICE_KEY_MAP, headers=TOKEN_HEADER,
-    verify=False).json()["devices"]:
-        alert_return.append(alert)
-    return alert_return
+    r_data = requests.post(url=fetch_url, json=DETECTIONS_ALERT_DEVICE_KEY_MAP, headers=TOKEN_HEADER,
+    verify=False).json()
+    for device in r_data['devices']:
+        for name in NAMES:
+            for x in device[name]:
+                for prefix in STRIP_PREFIXES.split(','):
+                    if prefix is not '?':
+                        if x.startswith(prefix):
+                            device[name] = [x[len(prefix):]]
+                            break
+                for suffix in STRIP_SUFFIXES.split(','):
+                    if prefix is not '?':
+                        if x.endswith(suffix):
+                            device[name] = [x[:(len(x)-len(suffix))]]
+                            break
+
+    return r_data
 
 def test_module():
     try:
