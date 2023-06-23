@@ -101,6 +101,7 @@ def get_alerts():
     verify=False).json()['alerts']
     if len(alerts_json) ==0:
         return alert_return
+    #sleep(2)
     for alert in alerts_json:
         if alert['status'] == 'Unresolved':
             for y in alert:
@@ -131,19 +132,22 @@ def fetch_affected_devices(args : dict):
     fetch_url = f"{API_ALERTS_URL}{args.get('alert_id')}/devices"
     r_data = requests.post(url=fetch_url, json=DETECTIONS_ALERT_DEVICE_KEY_MAP, headers=TOKEN_HEADER,
     verify=False).json()
-    for device in r_data['devices']:
-        for name in NAMES:
-            for x in device[name]:
-                for prefix in STRIP_PREFIXES.split(','):
-                    if prefix is not '?':
-                        if x.startswith(prefix):
-                            device[name] = [x[len(prefix):]]
-                            break
-                for suffix in STRIP_SUFFIXES.split(','):
-                    if prefix is not '?':
-                        if x.endswith(suffix):
-                            device[name] = [x[:(len(x)-len(suffix))]]
-                            break
+    try:
+        for device in r_data['devices']:
+            for name in NAMES:
+                for x in device[name]:
+
+                    for prefix in STRIP_PREFIXES.split(','):
+                        if prefix != '?':
+                            x.replace(prefix,'',1)
+                    for suffix in STRIP_SUFFIXES.split(','):
+                        if prefix != '?':
+                            if x.endswith(suffix):
+                                x = x[:(len(x)-len(suffix))]
+                    x = x.strip('\\')
+                    device[name] = [x]
+    except:
+        pass
 
     return r_data
 
